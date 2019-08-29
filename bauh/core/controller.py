@@ -96,29 +96,34 @@ class GenericSoftwareManager(SoftwareManager):
             self.thread_prepare.join()
             self.thread_prepare = None
 
-    def read_installed(self, disk_loader: DiskCacheLoader = None, pkg_type: Type[SoftwarePackage] = None) -> List[SoftwarePackage]:
+    def read_installed(self, disk_loader: DiskCacheLoader = None, pkg_types: Set[Type[SoftwarePackage]] = None) -> List[SoftwarePackage]:
         self._wait_to_be_ready()
 
         installed = []
 
         disk_loader = None
 
-        if pkg_type is None:  # any time
+        if not pkg_types:  # any type
             for man in self.managers:
                 if self._is_enabled(man):
                     if not disk_loader:
                         disk_loader = self.disk_loader_factory.new()
                         disk_loader.start()
 
-                    installed.extend(man.read_installed(disk_loader=disk_loader, pkg_type=pkg_type))
+                    installed.extend(man.read_installed(disk_loader=disk_loader, pkg_types=None))
 
         else:
-            man = self.map.get(pkg_type)
+            man_already_used = []
 
-            if man and self._is_enabled(man):
-                disk_loader = self.disk_loader_factory.new()
-                disk_loader.start()
-                installed.extend(man.read_installed(disk_loader=disk_loader, pkg_type=None))
+            for t in pkg_types:
+                man = self.map.get(t)
+                if man and (man not in man_already_used) and self._is_enabled(man):
+
+                    if not disk_loader:
+                        disk_loader = self.disk_loader_factory.new()
+                        disk_loader.start()
+
+                    installed.extend(man.read_installed(disk_loader=disk_loader, pkg_types=None))
 
         if disk_loader:
             disk_loader.stop = True

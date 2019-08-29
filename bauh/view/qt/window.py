@@ -273,6 +273,7 @@ class ManageWindow(QWidget):
             self.ref_checkbox_only_apps.setVisible(True)
             self.ref_bt_upgrade.setVisible(True)
             self.update_apps(apps=None, as_installed=True)
+            self.input_search.setText('')
 
     def _show_about(self):
         if self.dialog_about is None:
@@ -324,7 +325,7 @@ class ManageWindow(QWidget):
         self.checkbox_console.setChecked(False)
         self.textarea_output.hide()
 
-    def refresh_apps(self, keep_console: bool = True, top_app: PackageView = None, pkg_type: Type[SoftwarePackage] = None):
+    def refresh_apps(self, keep_console: bool = True, top_app: PackageView = None, pkg_types: Set[Type[SoftwarePackage]] = None):
         self.type_filter = None
         self.input_search.clear()
 
@@ -335,11 +336,8 @@ class ManageWindow(QWidget):
         self.ref_checkbox_only_apps.setVisible(False)
         self._begin_action(self.locale_keys['manage_window.status.refreshing'], clear_filters=True)
 
-        if top_app:
-            self.thread_refresh.app = top_app  # the app will be on top when refresh happens
-
-        self.thread_refresh.pkg_type = pkg_type
-        self.thread_refresh.pkgs_installed = self.pkgs_installed
+        self.thread_refresh.app = top_app  # the app will be on top when refresh happens
+        self.thread_refresh.pkg_types = pkg_types
         self.thread_refresh.start()
 
     def _finish_refresh_apps(self, res: dict):
@@ -395,7 +393,7 @@ class ManageWindow(QWidget):
             if self._can_notify_user():
                 util.notify_user('{} ({}) {}'.format(app.model.base_data.name, app.model.get_type(), self.locale_keys['uninstalled']))
 
-            self.refresh_apps()
+            self.refresh_apps(pkg_types={app.model.__class__})
         else:
             if self._can_notify_user():
                 util.notify_user('{}: {}'.format(app.model.base_data.name, self.locale_keys['notification.uninstall.failed']))
@@ -412,7 +410,7 @@ class ManageWindow(QWidget):
             if self._can_notify_user():
                 util.notify_user('{} {}'.format(res['app'], self.locale_keys['downgraded']))
 
-            self.refresh_apps()
+            self.refresh_apps(pkg_types={res['app'].model.__class__})
 
             if self.tray_icon:
                 self.tray_icon.verify_updates(notify_user=False)
@@ -522,7 +520,13 @@ class ManageWindow(QWidget):
         available_types = {}
 
         if apps is not None:
-            self.pkgs, self.pkgs_installed = [], []
+            self.pkgs = []
+            old_installed = None
+
+            if as_installed:
+                old_installed = self.pkgs_installed
+                self.pkgs_installed = []
+
             for app in apps:
                 app_model = PackageView(model=app, visible=app.is_application() or not self.checkbox_only_apps.isChecked())
                 available_types[app.get_type()] = app.get_type_icon_path()
@@ -531,6 +535,17 @@ class ManageWindow(QWidget):
 
                 if as_installed:
                     self.pkgs_installed.append(app_model)
+
+            if old_installed and types:
+                for pkgv in old_installed:
+                    if not pkgv.model.__class__ in types:
+                        available_types[pkgv.model.get_type()] = pkgv.model.get_type_icon_path()
+                        napps += 1 if pkgv.model.is_application() else 0
+                        self.pkgs.append(pkgv)
+
+                        if as_installed:
+                            self.pkgs_installed.append(pkgv)
+
         else:  # use installed
             self.pkgs = self.pkgs_installed
             for app in self.pkgs:
@@ -609,11 +624,10 @@ class ManageWindow(QWidget):
                     if self.manager.requires_root('update', app_v.model):
                         requires_root = True
 
-            bt_ex = UpdateToggleButton(None, self, self.locale_keys, clickable=False)
             if to_update and dialog.ask_confirmation(title=self.locale_keys['manage_window.upgrade_all.popup.title'],
                                                      body=self.locale_keys['manage_window.upgrade_all.popup.body'],
                                                      locale_keys=self.locale_keys,
-                                                     widgets=[bt_ex]):
+                                                     widgets=[UpdateToggleButton(None, self, self.locale_keys, clickable=False)]):
                 pwd = None
 
                 if not is_root() and requires_root:
@@ -635,7 +649,7 @@ class ManageWindow(QWidget):
             if self._can_notify_user():
                 util.notify_user('{} {}'.format(res['updated'], self.locale_keys['notification.update_selected.success']))
 
-            self.refresh_apps()
+            self.refresh_apps(pkg_types=res['types'])
 
             if self.tray_icon:
                 self.tray_icon.verify_updates()
@@ -693,9 +707,9 @@ class ManageWindow(QWidget):
         self.combo_filter_type.setEnabled(True)
         self.checkbox_updates.setEnabled(True)
 
-    def downgrade_app(self, app: PackageView):
+    def downgrade_app(self, pkgv: PackageView):
         pwd = None
-        requires_root = self.manager.requires_root('downgrade', app.model)
+        requires_root = self.manager.requires_root('downgrade', pkgv.model)
 
         if not is_root() and requires_root:
             pwd, ok = ask_root_password(self.locale_keys)
@@ -704,17 +718,17 @@ class ManageWindow(QWidget):
                 return
 
         self._handle_console_option(True)
-        self._begin_action('{} {}'.format(self.locale_keys['manage_window.status.downgrading'], app.model.base_data.name))
+        self._begin_action('{} {}'.format(self.locale_keys['manage_window.status.downgrading'], pkgv.model.base_data.name))
 
-        self.thread_downgrade.app = app
+        self.thread_downgrade.app = pkgv
         self.thread_downgrade.root_password = pwd
         self.thread_downgrade.start()
 
-    def get_app_info(self, app: dict):
+    def get_app_info(self, pkg: dict):
         self._handle_console_option(False)
         self._begin_action(self.locale_keys['manage_window.status.info'])
 
-        self.thread_get_info.app = app
+        self.thread_get_info.app = pkg
         self.thread_get_info.start()
 
     def get_app_history(self, app: dict):
@@ -788,7 +802,7 @@ class ManageWindow(QWidget):
             if self._can_notify_user():
                 util.notify_user(msg='{} ({}) {}'.format(app.model.base_data.name, app.model.get_type(), self.locale_keys['installed']))
 
-            self.refresh_apps(top_app=app)
+            self.refresh_apps(top_app=app, pkg_types={app.model.__class__})
         else:
             if self._can_notify_user():
                 util.notify_user('{}: {}'.format(app.model.base_data.name, self.locale_keys['notification.install.failed']))

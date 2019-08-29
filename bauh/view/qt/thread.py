@@ -1,7 +1,7 @@
 import subprocess
 import time
 from datetime import datetime, timedelta
-from typing import List, Type
+from typing import List, Type, Set
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -74,7 +74,7 @@ class UpdateSelectedApps(AsyncAction):
         success = False
 
         if self.apps_to_update:
-            updated = 0
+            updated, updated_types = 0, set()
             for app in self.apps_to_update:
                 self.change_status('{} {}...'.format(self.locale_keys['manage_window.status.upgrading'], app.model.base_data.name))
                 success = bool(self.manager.update(app.model, self.root_password, self))
@@ -83,24 +83,25 @@ class UpdateSelectedApps(AsyncAction):
                     break
                 else:
                     updated += 1
+                    updated_types.add(app.model.__class__)
                     self.signal_output.emit('\n')
 
-            self.notify_finished({'success': success, 'updated': updated})
+            self.notify_finished({'success': success, 'updated': updated, 'types': updated_types})
 
         self.apps_to_update = None
 
 
 class RefreshApps(AsyncAction):
 
-    def __init__(self, manager: SoftwareManager, app: PackageView = None, pkg_type: Type[SoftwarePackage] = None):
+    def __init__(self, manager: SoftwareManager, app: PackageView = None, pkg_types: Set[Type[SoftwarePackage]] = None):
         super(RefreshApps, self).__init__()
         self.manager = manager
         self.app = app  # app that should be on list top
-        self.pkg_type = pkg_type
+        self.pkg_types = pkg_types
 
     def run(self):
-        installed = self.manager.read_installed(pkg_type=self.pkg_type)
-        pkg_types = set()
+        installed = self.manager.read_installed(pkg_types=self.pkg_types)
+        refreshed_types = set()
 
         if installed:
             idx_found, app_found = None, None
@@ -110,16 +111,16 @@ class RefreshApps(AsyncAction):
                     app_found = ins
                     break
 
-                if self.pkg_type:
-                    pkg_types.add(self.app.__class__)
+                if self.pkg_types:
+                    refreshed_types.add(ins.__class__)
 
             if app_found:
                 del installed[idx_found]
                 installed.insert(0, app_found)
 
-        self.notify_finished({'installed': installed, 'types': pkg_types})
+        self.notify_finished({'installed': installed, 'types': refreshed_types})
         self.app = None
-        self.pkg_type = None
+        self.pkg_types = None
 
 
 class UninstallApp(AsyncAction):
