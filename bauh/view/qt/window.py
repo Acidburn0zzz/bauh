@@ -34,6 +34,9 @@ class ManageWindow(QWidget):
 
     signal_user_res = pyqtSignal(bool)
 
+    def _toolbar_button_style(self, bg: str):
+        return 'QPushButton { color: white; font-weight: bold; background: ' + bg + '}'
+
     def __init__(self, locale_keys: dict, icon_cache: Cache, manager: ApplicationManager, disk_cache: bool, download_icons: bool, screen_size, suggestions: bool, tray_icon=None):
         super(ManageWindow, self).__init__()
         self.locale_keys = locale_keys
@@ -89,7 +92,7 @@ class ManageWindow(QWidget):
         self.layout.addWidget(self.toolbar_top)
 
         self.toolbar = QToolBar()
-        self.toolbar.setStyleSheet('QToolBar {spacing: 3px;}')
+        self.toolbar.setStyleSheet('QToolBar {spacing: 4px; margin-top: 8px; margin-bottom: 5px}')
 
         self.checkbox_updates = QCheckBox()
         self.checkbox_updates.setText(self.locale_keys['updates'].capitalize())
@@ -112,15 +115,15 @@ class ManageWindow(QWidget):
         self.bt_refresh.setToolTip(locale_keys['manage_window.bt.refresh.tooltip'])
         self.bt_refresh.setIcon(QIcon(resource.get_path('img/new_refresh.svg')))
         self.bt_refresh.setText(self.locale_keys['manage_window.bt.refresh.text'])
-        self.bt_refresh.setStyleSheet('QPushButton { background: #2368AD; color: white; font-weight: bold;} QPushButton:disabled { background: gray }')
+        self.bt_refresh.setStyleSheet(self._toolbar_button_style('#2368AD'))
         self.bt_refresh.clicked.connect(lambda: self.refresh_apps(keep_console=False))
-        self.toolbar.addWidget(self.bt_refresh)
+        self.ref_bt_refresh = self.toolbar.addWidget(self.bt_refresh)
 
         self.bt_upgrade = QPushButton()
         self.bt_upgrade.setToolTip(locale_keys['manage_window.bt.upgrade.tooltip'])
         self.bt_upgrade.setIcon(QIcon(resource.get_path('img/app_update.svg')))
         self.bt_upgrade.setText(locale_keys['manage_window.bt.upgrade.text'])
-        self.bt_upgrade.setStyleSheet('QPushButton { background: #20A435; color: white; font-weight: bold;} QPushButton:disabled { background: gray }')  # 19CC24  19B622
+        self.bt_upgrade.setStyleSheet(self._toolbar_button_style('#20A435'))
         self.bt_upgrade.clicked.connect(self.update_selected)
         self.ref_bt_upgrade = self.toolbar.addWidget(self.bt_upgrade)
 
@@ -533,42 +536,29 @@ class ManageWindow(QWidget):
 
         self.type_filter = self.any_type_filter
 
-        filters_layout = self.extra_filters.layout()
-        for i in reversed(range(filters_layout.count())):
-            filters_layout.itemAt(i).widget().setParent(None)
+        if len(available_types) > 1:
 
-        if available_types:
-            combo = QComboBox()
-            combo.setEditable(True)
-            combo.lineEdit().setReadOnly(True)
-            combo.lineEdit().setAlignment(Qt.AlignCenter)
+            filters_layout = self.extra_filters.layout()
+            for i in reversed(range(filters_layout.count())):
+                filters_layout.itemAt(i).widget().setParent(None)
 
-            def handle_activated(index: int):
-                self._handle_type_filter(combo.itemData(index))
+            if available_types:
+                combo = QComboBox()
+                combo.setStyleSheet('QLineEdit { height: 2px}')
+                combo.setEditable(True)
+                combo.lineEdit().setReadOnly(True)
+                combo.lineEdit().setAlignment(Qt.AlignCenter)
 
-            combo.activated.connect(handle_activated)
-            combo.addItem(self._get_resized_icon(resource.get_path('img/logo.svg'), 14), self.locale_keys[self.any_type_filter], self.any_type_filter)
+                def handle_activated(index: int):
+                    self._handle_type_filter(combo.itemData(index))
 
-            for app_type, icon_path in available_types.items():
-                combo.addItem(self._get_resized_icon(icon_path, 14), app_type, app_type)
-                # combo.addItem(QIcon(resource.get_path('img/logo.png')), app_type)
+                combo.activated.connect(handle_activated)
+                combo.addItem(self._get_resized_icon(resource.get_path('img/logo.svg'), 14), self.locale_keys[self.any_type_filter].capitalize(), self.any_type_filter)
 
-            filters_layout.addWidget(combo)
-            # for app_type in sorted(list(available_types)):
-            #     checkbox_app_type = QRadioButton()
-            #
-            #     text = app_type
-            #     if app_type == self.any_type_filter:
-            #         checkbox_app_type.setChecked(True)
-            #         text = self.locale_keys[app_type]
-            #
-            #     checkbox_app_type.setText(text.capitalize())
-            #
-            #     def handle_click(clicked: bool, filter_type: str = app_type):
-            #         self._handle_type_filter(filter_type)
-            #
-            #     checkbox_app_type.clicked.connect(handle_click)
-            #     filters_layout.addWidget(checkbox_app_type)
+                for app_type, icon_path in available_types.items():
+                    combo.addItem(self._get_resized_icon(icon_path, 14), app_type.capitalize(), app_type)
+
+                filters_layout.addWidget(combo)
 
     def resize_and_center(self, accept_lower_width: bool = True):
         new_width = reduce(operator.add, [self.table_apps.columnWidth(i) for i in range(len(self.table_apps.column_names))]) * 1.05
@@ -638,7 +628,7 @@ class ManageWindow(QWidget):
 
         self.label_status.setText(action_label + "...")
         self.ref_bt_upgrade.setVisible(False)
-        self.bt_refresh.setEnabled(False)
+        self.ref_bt_refresh.setVisible(False)
         self.checkbox_only_apps.setEnabled(False)
         self.table_apps.setEnabled(False)
         self.checkbox_updates.setEnabled(False)
@@ -660,7 +650,7 @@ class ManageWindow(QWidget):
         self.ref_label_updates.setVisible(True)
         self.thread_animate_progress.stop = True
         self.progress_bar.setValue(0)
-        self.bt_refresh.setEnabled(True)
+        self.ref_bt_refresh.setVisible(True)
         self.checkbox_only_apps.setEnabled(True)
         self.table_apps.setEnabled(True)
         self.input_search.setEnabled(True)
