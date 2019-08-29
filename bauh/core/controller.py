@@ -1,6 +1,6 @@
 from argparse import Namespace
 from threading import Thread
-from typing import List, Set
+from typing import List, Set, Type
 
 from bauh_api.abstract.controller import SoftwareManager, SearchResult
 from bauh_api.abstract.handler import ProcessWatcher
@@ -96,20 +96,29 @@ class GenericSoftwareManager(SoftwareManager):
             self.thread_prepare.join()
             self.thread_prepare = None
 
-    def read_installed(self, disk_loader: DiskCacheLoader = None) -> List[SoftwarePackage]:
+    def read_installed(self, disk_loader: DiskCacheLoader = None, pkg_type: Type[SoftwarePackage] = None) -> List[SoftwarePackage]:
         self._wait_to_be_ready()
 
         installed = []
 
         disk_loader = None
 
-        for man in self.managers:
-            if self._is_enabled(man):
-                if not disk_loader:
-                    disk_loader = self.disk_loader_factory.new()
-                    disk_loader.start()
+        if pkg_type is None:  # any time
+            for man in self.managers:
+                if self._is_enabled(man):
+                    if not disk_loader:
+                        disk_loader = self.disk_loader_factory.new()
+                        disk_loader.start()
 
-                installed.extend(man.read_installed(disk_loader=disk_loader))
+                    installed.extend(man.read_installed(disk_loader=disk_loader, pkg_type=pkg_type))
+
+        else:
+            man = self.map.get(pkg_type)
+
+            if man and self._is_enabled(man):
+                disk_loader = self.disk_loader_factory.new()
+                disk_loader.start()
+                installed.extend(man.read_installed(disk_loader=disk_loader, pkg_type=None))
 
         if disk_loader:
             disk_loader.stop = True

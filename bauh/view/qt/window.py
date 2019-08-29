@@ -1,6 +1,6 @@
 import operator
 from functools import reduce
-from typing import List
+from typing import List, Type, Set
 
 from PyQt5.QtCore import QEvent, Qt, QSize, pyqtSignal
 from PyQt5.QtGui import QIcon, QWindowStateChangeEvent, QPixmap
@@ -324,7 +324,7 @@ class ManageWindow(QWidget):
         self.checkbox_console.setChecked(False)
         self.textarea_output.hide()
 
-    def refresh_apps(self, keep_console: bool = True, top_app: PackageView = None):
+    def refresh_apps(self, keep_console: bool = True, top_app: PackageView = None, pkg_type: Type[SoftwarePackage] = None):
         self.type_filter = None
         self.input_search.clear()
 
@@ -338,13 +338,15 @@ class ManageWindow(QWidget):
         if top_app:
             self.thread_refresh.app = top_app  # the app will be on top when refresh happens
 
+        self.thread_refresh.pkg_type = pkg_type
+        self.thread_refresh.pkgs_installed = self.pkgs_installed
         self.thread_refresh.start()
 
-    def _finish_refresh_apps(self, apps: List[SoftwarePackage]):
+    def _finish_refresh_apps(self, res: dict):
         self.finish_action()
         self.ref_checkbox_only_apps.setVisible(True)
         self.ref_bt_upgrade.setVisible(True)
-        self.update_apps(apps, as_installed=True)
+        self.update_apps(res['installed'], as_installed=True, types=res['types'])
         self.first_refresh = False
 
     def uninstall_app(self, app: PackageView):
@@ -514,13 +516,13 @@ class ManageWindow(QWidget):
         geo.moveCenter(center_point)
         self.move(geo.topLeft())
 
-    def update_apps(self, apps: List[SoftwarePackage], as_installed: bool, update_check_enabled: bool = True):
+    def update_apps(self, apps: List[SoftwarePackage], as_installed: bool, update_check_enabled: bool = True, types: Set[type] = None):
 
         napps = 0  # number of apps (not libraries, runtimes or something else)
         available_types = {}
 
         if apps is not None:
-            self.pkgs = []
+            self.pkgs, self.pkgs_installed = [], []
             for app in apps:
                 app_model = PackageView(model=app, visible=app.is_application() or not self.checkbox_only_apps.isChecked())
                 available_types[app.get_type()] = app.get_type_icon_path()

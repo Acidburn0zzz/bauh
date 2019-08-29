@@ -1,13 +1,13 @@
 import subprocess
 import time
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Type
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
 from bauh_api.abstract.controller import SoftwareManager
 from bauh_api.abstract.handler import ProcessWatcher
-from bauh_api.abstract.model import PackageStatus
+from bauh_api.abstract.model import PackageStatus, SoftwarePackage
 from bauh_api.abstract.view import InputViewComponent, MessageType
 from bauh_api.exception import NoInternetException
 from bauh_api.util.cache import Cache
@@ -92,28 +92,34 @@ class UpdateSelectedApps(AsyncAction):
 
 class RefreshApps(AsyncAction):
 
-    def __init__(self, manager: SoftwareManager, app: PackageView = None):
+    def __init__(self, manager: SoftwareManager, app: PackageView = None, pkg_type: Type[SoftwarePackage] = None):
         super(RefreshApps, self).__init__()
         self.manager = manager
         self.app = app  # app that should be on list top
+        self.pkg_type = pkg_type
 
     def run(self):
-        installed = self.manager.read_installed()
+        installed = self.manager.read_installed(pkg_type=self.pkg_type)
+        pkg_types = set()
 
-        if installed and self.app:
+        if installed:
             idx_found, app_found = None, None
             for idx, ins in enumerate(installed):
-                if ins.get_type() == self.app.model.get_type() and ins.base_data.id == self.app.model.base_data.id:
+                if self.app and ins.get_type() == self.app.model.get_type() and ins.base_data.id == self.app.model.base_data.id:
                     idx_found = idx
                     app_found = ins
                     break
+
+                if self.pkg_type:
+                    pkg_types.add(self.app.__class__)
 
             if app_found:
                 del installed[idx_found]
                 installed.insert(0, app_found)
 
-        self.notify_finished(installed)
+        self.notify_finished({'installed': installed, 'types': pkg_types})
         self.app = None
+        self.pkg_type = None
 
 
 class UninstallApp(AsyncAction):
